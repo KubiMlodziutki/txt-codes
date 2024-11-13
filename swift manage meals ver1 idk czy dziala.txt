@@ -1,0 +1,110 @@
+import SwiftUI
+
+struct AddMealView: View {
+    @State private var selectedProducer = "Value"
+    @State private var selectedGrams = "Value"
+    @State private var notes = ""
+    
+    let producers = ["Value", "Producer 1", "Producer 2"]
+    let gramOptions = ["Value", "50g", "100g", "200g"]
+
+    var body: some View {
+        ZStack {
+            Color.black.edgesIgnoringSafeArea(.all)
+
+            VStack {
+                HStack {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("Add new meal")
+                        .foregroundColor(.white)
+                        .font(.title2)
+                    Spacer()
+                }
+                .padding()
+                
+                Spacer()
+                
+                Text("Producer")
+                    .foregroundColor(.white)
+                    .font(.headline)
+                
+                Picker("Select Producer", selection: $selectedProducer) {
+                    ForEach(producers, id: \.self) { producer in
+                        Text(producer)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .foregroundColor(.white)
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.2)))
+                .padding(.horizontal)
+
+                Text("Grams")
+                    .foregroundColor(.white)
+                    .font(.headline)
+                    .padding(.top)
+                
+                Picker("Select Grams", selection: $selectedGrams) {
+                    ForEach(gramOptions, id: \.self) { grams in
+                        Text(grams)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .foregroundColor(.white)
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.2)))
+                .padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Kcal:       xg")
+                    Text("Protein:    xg")
+                    Text("Carbs:      xg")
+                    Text("Fat:        xg")
+                }
+                .foregroundColor(.white)
+                .font(.system(size: 16))
+                .padding(.top)
+                
+                Divider()
+                    .background(Color.white)
+                    .padding(.horizontal)
+                
+                Text("Optional notes")
+                    .foregroundColor(.white)
+                    .font(.headline)
+                    .padding(.top)
+                
+                TextEditor(text: $notes)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.2)))
+                    .frame(height: 100)
+                    .padding(.horizontal)
+                
+                Spacer()
+                
+                // Add button
+                Button(action: {
+                    //...
+                }) {
+                    Text("Add")
+                        .foregroundColor(.black)
+                        .font(.headline)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.8)))
+                        .padding(.horizontal)
+                }
+                .padding(.bottom, 20)
+            }
+        }
+    }
+}
+
+struct AddMealView_Previews: PreviewProvider {
+    static var previews: some View {
+        AddMealView()
+    }
+}
