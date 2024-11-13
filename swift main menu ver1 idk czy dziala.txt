@@ -6,7 +6,6 @@ struct MainMenuView: View {
             Color.black.edgesIgnoringSafeArea(.all) // Background color
 
             VStack {
-                // Header with profile and settings icons
                 HStack {
                     Spacer()
                     Image(systemName: "person.circle")
@@ -22,7 +21,6 @@ struct MainMenuView: View {
                 
                 Spacer()
                 
-                // Menu options
                 VStack(alignment: .leading, spacing: 20) {
                     MenuOptionView(title: "Manage dreams")
                     MenuOptionView(title: "Manage activity")
@@ -47,7 +45,6 @@ struct MainMenuView: View {
                 
                 Spacer()
                 
-                // Daily goal status
                 Text("--daily goal status--")
                     .foregroundColor(.white)
                     .font(.system(size: 16))
@@ -57,7 +54,6 @@ struct MainMenuView: View {
     }
 }
 
-// Custom view for menu options with title and arrow
 struct MenuOptionView: View {
     var title: String
     
