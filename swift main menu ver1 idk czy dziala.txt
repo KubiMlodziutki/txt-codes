@@ -7,47 +7,59 @@ struct MainMenuView: View {
 
             VStack {
                 HStack {
-                    Spacer()
                     Image(systemName: "person.circle")
-                        .font(.system(size: 24))
+                        .font(.system(size: 46, weight: .bold))
                         .foregroundColor(.white)
                         .padding()
                     Spacer()
                     Image(systemName: "gearshape")
-                        .font(.system(size: 24))
+                        .font(.system(size: 46, weight: .bold))
                         .foregroundColor(.white)
                         .padding()
                 }
                 
                 Spacer()
                 
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 35) {
                     MenuOptionView(title: "Manage dreams")
                     MenuOptionView(title: "Manage activity")
                     MenuOptionView(title: "Manage weight")
                     MenuOptionView(title: "Manage meals")
                 }
-                .padding()
-                
+                .padding(.top, 20)
+                .padding(.horizontal)
+                .font(.system(size: 30, weight: .bold))
+                Spacer()
+                Spacer()
                 // Calorie tracker section
                 Divider()
                     .background(Color.white)
                     .padding(.horizontal)
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Kcal consumed:       x")
-                    Text("Kcal burned:         x")
-                    Text("Total balance:       x")
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Kcal consumed:       x")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    HStack {
+                        Text("Kcal burned:              x")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    HStack {
+                        Text("Total balance:           x")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .foregroundColor(.white)
-                .font(.system(size: 16))
+                .font(.system(size: 18, weight: .semibold))
                 .padding(.leading, 20)
+                .padding(.trailing, 20)
                 
                 Spacer()
                 
                 Text("--daily goal status--")
                     .foregroundColor(.white)
-                    .font(.system(size: 16))
+                    .font(.system(size: 18, weight: .semibold))
                     .padding(.bottom, 20)
             }
         }
@@ -61,7 +73,7 @@ struct MenuOptionView: View {
         HStack {
             Text(title)
                 .foregroundColor(.white)
-                .font(.system(size: 20))
+                .font(.system(size: 30))
             Spacer()
             Image(systemName: "chevron.right")
                 .foregroundColor(.white)
