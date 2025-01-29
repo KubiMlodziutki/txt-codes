@@ -149,6 +149,82 @@ CREATE TABLE Mysz_tab OF T_Mysz
 OBJECT IDENTIFIER IS PRIMARY KEY;
 
 
+CREATE OR REPLACE TRIGGER elita_wstawianie_trig
+BEFORE INSERT OR UPDATE ON Elita_tab
+FOR EACH ROW
+DECLARE
+    v_count NUMBER;
+    e_already_plebs EXCEPTION;
+    e_already_elita EXCEPTION;
+    
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM Plebs_tab p
+     WHERE p.kot = :NEW.kot;
+
+    IF v_count > 0 THEN
+       RAISE e_already_plebs;
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
+      FROM Elita_tab e
+     WHERE e.kot = :NEW.kot;
+
+    IF v_count > 0 THEN
+       RAISE e_already_elita;
+    END IF;
+
+EXCEPTION
+    WHEN e_already_plebs THEN
+       DBMS_OUTPUT.put_line('UWAGA: Ten kot należy już do plebsu! Nie może być w elicie.');
+       ROLLBACK;
+
+    WHEN e_already_elita THEN
+       DBMS_OUTPUT.put_line('UWAGA: Ten kot należy już do elity! Nie można wstawić ponownie.');
+       ROLLBACK;
+END;
+
+CREATE OR REPLACE TRIGGER plebs_wstawianie_trig
+BEFORE INSERT OR UPDATE ON Plebs_tab
+FOR EACH ROW
+DECLARE
+    v_count NUMBER;
+    e_already_elita EXCEPTION;
+    e_already_plebs EXCEPTION;
+    
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    SELECT COUNT(*)
+      INTO v_count
+      FROM Elita_tab e
+     WHERE e.kot = :NEW.kot;
+
+    IF v_count > 0 THEN
+       RAISE e_already_elita;
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
+      FROM Plebs_tab p
+     WHERE p.kot = :NEW.kot;
+
+    IF v_count > 0 THEN
+       RAISE e_already_plebs;
+    END IF;
+
+EXCEPTION
+    WHEN e_already_elita THEN
+       DBMS_OUTPUT.put_line('UWAGA: Ten kot należy już do elity!');
+       ROLLBACK;
+
+    WHEN e_already_plebs THEN
+       DBMS_OUTPUT.put_line('UWAGA: Ten kot należy już do plebsu!');
+       ROLLBACK;
+END;
+
 
 INSERT INTO Koty_tab
 (
@@ -390,9 +466,6 @@ END;
 
 
 DECLARE
-    ----------------------------------------------------------------------------
-    -- Struktury kolekcji do masowego wstawiania:
-    ----------------------------------------------------------------------------
     TYPE t_nr_myszy_tab IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
     TYPE t_lowca_tab   IS TABLE OF VARCHAR2(15) INDEX BY BINARY_INTEGER;
     TYPE t_zjadacz_tab IS TABLE OF VARCHAR2(15) INDEX BY BINARY_INTEGER;
@@ -401,37 +474,31 @@ DECLARE
     
     l_nr_myszy    t_nr_myszy_tab;
     l_lowca       t_lowca_tab;
-    l_zjadacz     t_zjadacz_tab;  -- na razie NULL
+    l_zjadacz     t_zjadacz_tab;
     l_waga        t_waga_tab;
     l_data_zlow   t_data_tab;
     l_data_wyd    t_data_tab;
     
-    ----------------------------------------------------------------------------
     v_start_data   DATE := DATE '2004-01-01';
-    v_koniec_data     DATE := DATE '2025-01-22' - 1;  -- do dnia wczorajszego
-    v_aktualna_data DATE;  -- będziemy nim iterować miesiącami
+    v_koniec_data     DATE := DATE '2025-01-22' - 1;
+    v_aktualna_data DATE;
     
     v_ost_dzien_miesiaca DATE;
     v_ost_sroda         DATE;
     
-    v_myszy_total   NUMBER;  -- łączna liczba myszy w danym miesiącu
-    v_idx          NUMBER := 0;  -- indeks do tablic
-    
-    ----------------------------------------------------------------------------
-    -- Bufory do przechowywania danych o kotach aktywnych w danym miesiącu:
-    ----------------------------------------------------------------------------
+    v_myszy_total   NUMBER;
+    v_idx          NUMBER := 0;
+
     TYPE t_kot_record IS RECORD (
        pseudo        Kocury.pseudo%TYPE,
        przydzial     Kocury.przydzial_myszy%TYPE,
        extra         Kocury.myszy_extra%TYPE
     );
+    
     TYPE t_kot_table IS TABLE OF t_kot_record;
     
-    l_koty t_kot_table;  -- przechowuje dane o kotach aktywnych w danym miesiącu
-    
-    ----------------------------------------------------------------------------
-    
-    -- Pomocnicza zmienna, by pamiętać liczbę dni w miesiącu:
+    l_koty t_kot_table;
+
     v_dni_w_miesiacu NUMBER;
     v_licznik_dni   NUMBER;
     
@@ -440,59 +507,37 @@ BEGIN
     
     WHILE TRUNC(v_aktualna_data, 'MONTH') <= TRUNC(v_koniec_data, 'MONTH')
     LOOP
-        ------------------------------------------------------------------------
-        -- Ustalamy początek i koniec analizowanego miesiąca
-        ------------------------------------------------------------------------
-        v_aktualna_data := TRUNC(v_aktualna_data, 'MONTH'); -- początek miesiąca
+        v_aktualna_data := TRUNC(v_aktualna_data, 'MONTH');
         v_ost_dzien_miesiaca := LAST_DAY(v_aktualna_data);
-        
-        -- Jeżeli koniec okresu (v_koniec_data) wypada w środku miesiąca,
-        -- to bierzemy tylko do v_koniec_data
+
         IF v_ost_dzien_miesiaca > v_koniec_data THEN
             v_ost_dzien_miesiaca := v_koniec_data;
         END IF;
-        
-        ------------------------------------------------------------------------
-        -- Wyliczamy aktywne koty oraz sumę potrzebnych myszy
-        ------------------------------------------------------------------------
+
         SELECT SUM(NVL(przydzial_myszy,0) + NVL(myszy_extra,0))
           INTO v_myszy_total
           FROM Kocury
-         WHERE w_stadku_od <= v_ost_dzien_miesiaca;  -- jeżeli uznajemy, że "aktywny" = w stadzie od <= koniec miesiąca
+         WHERE w_stadku_od <= v_ost_dzien_miesiaca;
         
         IF v_myszy_total IS NULL THEN
             v_myszy_total := 0;
         END IF;
-        
-        -- Wczytujemy dane o *poszczególnych* kotach (pseudo, przydzial, extra).
+
         SELECT pseudo,
-               NVL(przydzial_myszy,0) AS przydzial_myszy,
-               NVL(myszy_extra,0)     AS myszy_extra
+               NVL(przydzial_myszy, 0) AS przydzial_myszy,
+               NVL(myszy_extra, 0)     AS myszy_extra
           BULK COLLECT INTO l_koty
           FROM Kocury
          WHERE w_stadku_od <= v_ost_dzien_miesiaca;
          
         IF l_koty.COUNT = 0 THEN
-            -- Nie ma żadnych kotów w tym miesiącu? Przechodzimy dalej
             v_aktualna_data := ADD_MONTHS(v_aktualna_data, 1);
             CONTINUE;
         END IF;
         
         v_dni_w_miesiacu := (v_ost_dzien_miesiaca - (TRUNC(v_aktualna_data, 'MONTH')) + 1);
-        
-        ------------------------------------------------------------------------
-        -- Wyliczamy datę ostatniej środy tego miesiąca
-        ------------------------------------------------------------------------
+
         v_ost_sroda := ostatnia_sroda(v_aktualna_data);
-        
-        ------------------------------------------------------------------------
-        -- Rozdzielamy v_myszy_total na poszczególne koty
-        -- tak, by zachować proporcje: cat i ma (przydzial+extra)
-        ------------------------------------------------------------------------
-        
-        -- Suma "zapotrzebowania" poszczególnych kotów:
-        -- (przydzial + extra) dla każdego
-        -- Rozdzielimy v_myszy_total wprost proporcjonalnie.
         
         DECLARE
             v_sum_kotow NUMBER := 0;
@@ -502,63 +547,29 @@ BEGIN
             END LOOP;
             
             IF v_sum_kotow = 0 THEN
-                -- Teoretycznie może się zdarzyć, że wszyscy mają 0?
-                -- Wtedy nie wstawiamy żadnych myszy i przechodzimy dalej
                 v_aktualna_data := ADD_MONTHS(v_aktualna_data, 1);
                 CONTINUE;
             END IF;
-            
-            --------------------------------------------------------------------
-            -- Tutaj przejdziemy do faktycznego generowania wpisów.
-            -- Załóżmy, że za "lowca" wstawiamy pseudonim kota,
-            -- a daty zlowienia rozkładamy w miarę równomiernie.
-            --------------------------------------------------------------------
-            
+
             FOR i IN 1..l_koty.COUNT LOOP
-                -- obliczamy, ile myszy dany kot "upoluje" w tym miesiącu
-                -- w oparciu o proporcję: (przydzial+extra)/v_sum_kotow * v_myszy_total
                 DECLARE
                     v_myszy_kota NUMBER;
                 BEGIN
-                    v_myszy_kota := 
-                       TRUNC( (l_koty(i).przydzial + l_koty(i).extra)
-                              / v_sum_kotow
-                              * v_myszy_total
-                            );
-                    
-                    -- Można by też "zaokrąglać" i w razie powstałych niedoborów/nadwyżek
-                    -- rozdzielać je w kolejnych krokach (by suma końcowa wyszła równa v_myszy_total).
-                    -- Tutaj dla uproszczenia dajemy TRUNC, a ewentualne różnice ignorujemy
-                    -- (lub można je rozdzielić na koniec).
-                    
+                    v_myszy_kota := TRUNC((l_koty(i).przydzial + l_koty(i).extra)
+                                            / v_sum_kotow * v_myszy_total);
+
                     IF v_myszy_kota > 0 THEN
-                        -- Rozkładamy to w tym miesiącu. Dzielimy w miarę równomiernie
-                        -- pomiędzy dni od v_aktualna_data do v_ost_dzien_miesiaca.
-                        
                         v_licznik_dni := 1;
                         WHILE v_licznik_dni <= v_dni_w_miesiacu
                               AND v_myszy_kota > 0
                         LOOP
-                            -- Inkrementujemy nasz indeks do tablic
                             v_idx := v_idx + 1;
-                            
-                            -- Ustalamy nr_myszy z sekwencji, ale w FORALL i tak
-                            -- użyjemy myszy_seq.nextval
-                            l_nr_myszy(v_idx) := 0;  -- placeholder, wstawimy przez nextval
+                            l_nr_myszy(v_idx) := 0;
                             l_lowca(v_idx)    := l_koty(i).pseudo;
-                            l_zjadacz(v_idx)  := NULL;  -- w tym momencie nie jest przypisany
-                            
-                            -- Ustalmy przykładową wagę: np. 10 + dbms_random.value(0, 40)
-                            -- (trzeba by włączyć dbms_random.initialize w razie czego).
+                            l_zjadacz(v_idx)  := NULL;
                             l_waga(v_idx) := 10 + TRUNC(DBMS_RANDOM.value(0, 41));
-                            
-                            -- Data złowienia = v_aktualna_data + (v_licznik_dni - 1)
-                            l_data_zlow(v_idx) := TRUNC(v_aktualna_data, 'MONTH')
-                                                  + (v_licznik_dni - 1);
-                            
-                            -- Data wydania = ostatnia środa
+                            l_data_zlow(v_idx) := TRUNC(v_aktualna_data, 'MONTH') + (v_licznik_dni - 1);
                             l_data_wyd(v_idx) := v_ost_sroda;
-                            
                             v_myszy_kota := v_myszy_kota - 1;
                             v_licznik_dni       := v_licznik_dni + 1;
                         END LOOP;
@@ -598,10 +609,6 @@ BEGIN
 END;
 
 
-
-
--- Dla przykładu stwórzmy tymczasową tabelę (lub global temporary table)
--- w której mamy zewnętrzne dane o złowionych myszach
 CREATE TABLE Zewnetrzne_lowienia (
    pseudo         VARCHAR2(15),
    data_polowania DATE,
@@ -609,8 +616,6 @@ CREATE TABLE Zewnetrzne_lowienia (
    srednia_waga   NUMBER
 );
 
--- Procedura, która zczytuje z tej tabeli (lub innego źródła)
--- i wstawia do MYSZY w trybie masowym
 CREATE OR REPLACE PROCEDURE przyjmij_upolowane_myszy
 IS
     TYPE t_zew_record IS RECORD (
@@ -623,7 +628,6 @@ IS
     
     l_dane t_zew_tab;
     
-    ----------------------------------------------------------------------------
     TYPE t_nr_myszy_tab IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
     TYPE t_lowca_tab   IS TABLE OF VARCHAR2(15) INDEX BY BINARY_INTEGER;
     TYPE t_waga_tab    IS TABLE OF NUMBER(3) INDEX BY BINARY_INTEGER;
@@ -636,7 +640,7 @@ IS
     
     v_idx NUMBER := 0;
 BEGIN
-    -- Wczytujemy "na raz" wszystkie rekordy z Zewnetrzne_lowienia
+
     SELECT pseudo, data_polowania, ile_myszy, srednia_waga
       BULK COLLECT INTO l_dane
       FROM Zewnetrzne_lowienia;
@@ -646,7 +650,6 @@ BEGIN
         RETURN;
     END IF;
     
-    -- Przechodzimy po wierszach wczytanych, generujemy szczegółowe wpisy do MYSZY
     FOR i IN 1..l_dane.COUNT LOOP
         IF l_dane(i).ile_myszy IS NULL OR l_dane(i).ile_myszy = 0 THEN
             CONTINUE;
@@ -654,19 +657,18 @@ BEGIN
         
         FOR j IN 1..l_dane(i).ile_myszy LOOP
             v_idx := v_idx + 1;
-            l_nr_myszy(v_idx)  := 0; -- wstawimy z sekwencji
+            l_nr_myszy(v_idx)  := 0;
             l_lowca(v_idx)     := l_dane(i).pseudo;
             l_waga(v_idx)      := CASE
                                      WHEN l_dane(i).srednia_waga IS NOT NULL 
-                                          AND l_dane(i).srednia_waga BETWEEN 10 AND 50 
-                                          THEN l_dane(i).srednia_waga
+                                        AND l_dane(i).srednia_waga BETWEEN 10 AND 50 
+                                        THEN l_dane(i).srednia_waga
                                      ELSE 10 + TRUNC(DBMS_RANDOM.value(0, 41))
-                                   END;
+                                  END;
             l_data_zlow(v_idx) := l_dane(i).data_polowania;
         END LOOP;
     END LOOP;
     
-    -- Teraz masowe wstawienie do tabeli MYSZY
     FORALL k IN 1..v_idx
        INSERT INTO Myszy (
          nr_myszy,
@@ -679,16 +681,14 @@ BEGIN
        VALUES (
          myszy_seq.NEXTVAL,
          l_lowca(k),
-         NULL, -- zjadacz nie jest jeszcze znany
+         NULL,
          l_waga(k),
          l_data_zlow(k),
-         NULL   -- data_wydania nie jest jeszcze znana
+         NULL
        );
     
     DBMS_OUTPUT.put_line('Wstawiono ' || v_idx || ' nowych myszy.');
     
-    -- (Ewentualnie można skasować albo przenieść do archiwum rekordy
-    -- z tabeli Zewnetrzne_lowienia)
     DELETE FROM Zewnetrzne_lowienia;
 END;
 /
@@ -706,8 +706,8 @@ EXEC przyjmij_upolowane_myszy;
 
 
 SELECT nr_myszy, lowca, waga_myszy, data_zlowienia, data_wydania
-  FROM Myszy
- ORDER BY nr_myszy;
+FROM Myszy
+ORDER BY nr_myszy;
 --test end
 
 
@@ -716,12 +716,10 @@ CREATE OR REPLACE PROCEDURE wyplata_myszy (
    p_mies IN NUMBER
 )
 IS
-   -- Zmienne na daty
    v_data_poczatek DATE;
    v_data_koniec   DATE;
    v_data_wydania  DATE;
 
-   -- Struktury do myszy
    TYPE t_mysz_rec IS RECORD (
       nr_myszy       Myszy.nr_myszy%TYPE,
       data_zlowienia Myszy.data_zlowienia%TYPE
@@ -729,18 +727,16 @@ IS
    TYPE t_mysz_tab IS TABLE OF t_mysz_rec;
    l_wolne_myszy t_mysz_tab;
 
-   -- Struktury do kotów
    TYPE t_kot_rec IS RECORD (
       pseudo    Kocury.pseudo%TYPE,
-      poziom    NUMBER,   -- LEVEL w hierarchii
+      poziom    NUMBER,
       przydzial NUMBER,
       extra     NUMBER,
-      leftover  NUMBER    -- ile może jeszcze dostać
+      leftover  NUMBER
    );
    TYPE t_kot_tab IS TABLE OF t_kot_rec;
    l_koty t_kot_tab;
 
-   -- Struktury do FORALL
    TYPE t_nr_myszy_list IS TABLE OF NUMBER;
    TYPE t_zjadacz_list  IS TABLE OF VARCHAR2(15);
    TYPE t_datawyd_list  IS TABLE OF DATE;
@@ -751,40 +747,34 @@ IS
 
    v_update_count NUMBER := 0;
 
-   -- tablica: ile kot zje w TEJ procedurze
    TYPE t_already_eaten IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
    l_zjedzone t_already_eaten;
 
-   -- Zmienne pomocnicze
    v_juz_ma   NUMBER;
    v_limit    NUMBER;
    v_pozostal NUMBER;
 
 BEGIN
-   -- 1) Wyznaczamy początek i koniec miesiąca
    v_data_poczatek := TO_DATE(p_rok || '-' || p_mies || '-01','YYYY-MM-DD');
    v_data_koniec   := LAST_DAY(v_data_poczatek);
 
-   -- 2) Używamy naszej funkcji ostatnia_sroda
    v_data_wydania := ostatnia_sroda(v_data_poczatek);
 
-   -- 3) Pobieramy wolne myszy
    SELECT nr_myszy, data_zlowienia
      BULK COLLECT INTO l_wolne_myszy
      FROM Myszy
     WHERE zjadacz IS NULL
-      AND data_zlowienia <= v_data_koniec;
+    AND data_zlowienia <= v_data_koniec;
 
    IF l_wolne_myszy.COUNT = 0 THEN
       DBMS_OUTPUT.put_line('Brak wolnych myszy do rozdania za '||p_rok||'-'||p_mies||'.');
       RETURN;
    END IF;
 
-   -- 4) Hierarchia kotów (root = koty z szef IS NULL)
    SELECT pseudo,
           LEVEL                   AS poziom,
-          NVL(przydzial_myszy,0) AS przydzial,
-          NVL(myszy_extra,0)     AS extra,
+          NVL(przydzial_myszy,0)  AS przydzial,
+          NVL(myszy_extra,0)      AS extra,
           0                       AS leftover
      BULK COLLECT INTO l_koty
      FROM Kocury
@@ -797,7 +787,6 @@ BEGIN
       RETURN;
    END IF;
 
-   -- 5) Obliczamy leftover = limit - ile kot już ma w tym miesiącu
    FOR i IN 1..l_koty.COUNT LOOP
       SELECT COUNT(*)
         INTO v_juz_ma
@@ -816,7 +805,6 @@ BEGIN
       l_koty(i).leftover := v_pozostal;
    END LOOP;
 
-   -- 6) Round-robin
    FOR i IN 1..l_koty.COUNT LOOP
       l_zjedzone(i) := 0;
    END LOOP;
@@ -854,7 +842,6 @@ BEGIN
             i_kot := 1;
          END IF;
 
-         -- Czy wszyscy osiągnęli leftover?
          DECLARE
             v_all_full NUMBER := 0;
          BEGIN
@@ -871,7 +858,6 @@ BEGIN
       END LOOP;
    END;
 
-   -- 7) Masowe UPDATE
    IF v_update_count > 0 THEN
       FORALL x IN 1..v_update_count
          UPDATE Myszy
@@ -879,9 +865,9 @@ BEGIN
                 data_wydania = l_update_data(x)
           WHERE nr_myszy    = l_update_nr(x);
 
-      DBMS_OUTPUT.put_line('Rozdano '||v_update_count||' myszy za '||p_rok||'-'||p_mies||' (hierarchia + leftover).');
+      DBMS_OUTPUT.put_line('Rozdano '||v_update_count||' myszy za '||p_rok||'-'||p_mies||'.');
    ELSE
-      DBMS_OUTPUT.put_line('Nie rozdano żadnych myszy (hierarchia + leftover).');
+      DBMS_OUTPUT.put_line('Nie rozdano żadnych myszy.');
    END IF;
 END;
 
@@ -891,7 +877,7 @@ END;
 UPDATE Myszy
    SET zjadacz = NULL,
        data_wydania = NULL
- WHERE data_zlowienia >= DATE '2004-01-01';  -- albo inny warunek
+ WHERE data_zlowienia >= DATE '2004-01-01';
 COMMIT;
 --
 
